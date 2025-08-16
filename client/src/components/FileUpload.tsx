@@ -43,36 +43,66 @@ export default function FileUpload() {
         throw new Error(result.message || 'Upload failed');
       }
 
-      if (result.authenticated) {
+      if (result.demo) {
+        // Demo mode - automatically authenticate
         setIsAuthenticated(true);
         setIsLoading(true);
         
         toast({
-          title: 'Success',
-          description: 'Connected to Gmail & Calendar successfully! Processing emails...',
+          title: 'Demo Mode Active',
+          description: 'Using sample emails for testing. Processing...',
         });
 
-        // Automatically process emails after authentication
+        // Process demo emails
         try {
           await apiRequest('POST', '/api/process-emails');
           toast({
-            title: 'Complete',
-            description: 'Emails processed and classified successfully!',
+            title: 'Demo Ready',
+            description: 'Sample emails loaded and classified. Try the features!',
           });
         } catch (error: any) {
           toast({
-            title: 'Warning',
-            description: 'Authentication successful, but email processing failed',
+            title: 'Error',
+            description: 'Failed to process demo emails',
             variant: 'destructive',
           });
         } finally {
           setIsLoading(false);
         }
-      } else {
+      } else if (result.needsAuth) {
+        // Real OAuth required
+        if (result.instructions) {
+          toast({
+            title: 'Setup Instructions',
+            description: result.instructions,
+            duration: 10000,
+          });
+        }
+        
+        const authWindow = window.open(result.authUrl, 'auth', 'width=500,height=600');
+        
         toast({
-          title: 'Error',
-          description: 'Authentication failed. Please try again.',
-          variant: 'destructive',
+          title: 'Authentication Required',
+          description: 'Complete Google OAuth in the popup window',
+        });
+        
+        // Poll for auth completion
+        const pollTimer = setInterval(() => {
+          try {
+            if (authWindow?.closed) {
+              clearInterval(pollTimer);
+              handleAuthComplete();
+            }
+          } catch (error) {
+            clearInterval(pollTimer);
+            handleAuthComplete();
+          }
+        }, 1000);
+      } else {
+        setIsAuthenticated(true);
+        toast({
+          title: 'Success', 
+          description: 'Connected to Gmail & Calendar successfully!',
         });
       }
     } catch (error: any) {
@@ -151,9 +181,17 @@ export default function FileUpload() {
         )}
       </div>
       
-      <p className="text-xs text-gray-500 mt-1">
-        Upload your Google credentials.json file
-      </p>
+      <div className="mt-2">
+        <p className="text-xs text-gray-500 mb-2">
+          Upload your Google credentials.json file to connect to Gmail
+        </p>
+        
+        <div className="bg-blue-100 rounded-lg p-3 text-xs text-blue-800">
+          <strong>Demo Mode:</strong> Upload an empty JSON file (just <code>{`{}`}</code>) to try the app with sample emails.
+          <br />
+          <strong>Real Gmail:</strong> Upload your actual credentials.json from Google Cloud Console.
+        </div>
+      </div>
     </div>
   );
 }

@@ -75,6 +75,62 @@ function extractSimpleDeadline(body: string) {
   return null;
 }
 
+// Demo email data for testing purposes
+function getDemoEmails() {
+  return [
+    {
+      id: 'email-1',
+      threadId: 'thread-1',
+      subject: 'Q4 Budget Review - Need Response Today',
+      sender: 'Sarah Chen <sarah.chen@company.com>',
+      senderEmail: 'sarah.chen@company.com',
+      body: 'Hi there, I need your approval on the Q4 marketing budget allocation of $50,000. This is part of our annual budget review process, already approved by finance team. Deadline: Today 5:00 PM. The allocation will cover: Digital advertising campaigns ($30K), Content creation and design ($15K), Event marketing ($5K). Please let me know if you need any additional details. Best, Sarah',
+      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+      rawData: {}
+    },
+    {
+      id: 'email-2', 
+      threadId: 'thread-2',
+      subject: 'Project Timeline Concerns',
+      sender: 'Mike Rodriguez <mike.rodriguez@company.com>',
+      senderEmail: 'mike.rodriguez@company.com',
+      body: 'Team, I wanted to express some concerns about delivery delays for our upcoming project. We need to discuss this in tomorrow\'s meeting to avoid any escalation risk. The client is expecting the deliverables by next week.',
+      timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000), // 4 hours ago
+      rawData: {}
+    },
+    {
+      id: 'email-3',
+      threadId: 'thread-3', 
+      subject: 'Security Breach Alert - Immediate Action Required',
+      sender: 'Jennifer Park <jennifer.park@company.com>',
+      senderEmail: 'jennifer.park@company.com',
+      body: 'URGENT: Security incident detected. IT team needs approval for emergency protocols. Time-sensitive decision required. We have detected a potential security breach and need immediate action to secure our systems.',
+      timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
+      rawData: {}
+    },
+    {
+      id: 'email-4',
+      threadId: 'thread-4',
+      subject: 'Weekly Newsletter - Company Updates', 
+      sender: 'Company Newsletter <newsletter@company.com>',
+      senderEmail: 'newsletter@company.com',
+      body: 'This week\'s company updates: New office opening, employee spotlight, and upcoming events. Read more about our latest achievements and team celebrations.',
+      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+      rawData: {}
+    },
+    {
+      id: 'email-5',
+      threadId: 'thread-5',
+      subject: 'Meeting Schedule Request',
+      sender: 'Alex Johnson <alex.johnson@company.com>',
+      senderEmail: 'alex.johnson@company.com', 
+      body: 'Hi, could we schedule a meeting next week to discuss the new project requirements? I\'m available Tuesday through Thursday. Let me know what works best for you.',
+      timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
+      rawData: {}
+    }
+  ];
+}
+
 // Helper function to run Python AI scripts
 function runPythonScript(scriptName: string, command: string, data: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -129,18 +185,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ message: 'Failed to initialize Google services' });
       }
       
-      // For demo purposes, skip actual OAuth and simulate successful authentication
-      authTokens = { access_token: 'demo_token', refresh_token: 'demo_refresh' };
+      // Check if this is a demo request (empty JSON file) or real credentials  
+      const isDemo = !credentials.installed && !credentials.web;
       
-      // Re-initialize services with mock tokens
-      await gmailService.initialize(credentials, authTokens);
-      await calendarService.initialize(credentials, authTokens);
-      
-      res.json({ 
-        message: 'Credentials uploaded successfully',
-        authenticated: true,
-        needsAuth: false
-      });
+      if (isDemo) {
+        // Demo mode - automatically authenticate with mock tokens
+        authTokens = { access_token: 'demo_token', refresh_token: 'demo_refresh' };
+        
+        res.json({ 
+          message: 'Demo mode activated - using sample emails for testing',
+          authUrl: null,
+          needsAuth: false,
+          demo: true
+        });
+      } else {
+        // Real credentials - generate OAuth URL
+        const authUrl = gmailService.getAuthUrl();
+        
+        res.json({ 
+          message: 'Credentials uploaded successfully. Please complete OAuth authentication.',
+          authUrl,
+          needsAuth: !authTokens,
+          demo: false,
+          instructions: `
+            To complete setup:
+            1. Click the authentication link that opens
+            2. Grant Gmail and Calendar permissions
+            3. Return to this app to see your real emails
+            
+            Note: Make sure your Google Cloud project has the correct redirect URI:
+            ${process.env.REPLIT_URL || 'https://your-replit-url'}/auth/google/callback
+          `
+        });
+      }
     } catch (error) {
       console.error('Error uploading credentials:', error);
       res.status(400).json({ message: 'Invalid credentials file' });
@@ -152,7 +229,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ authenticated: !!authTokens });
   });
   
-  // Handle OAuth callback
+  // Handle OAuth callback - this will be called by Google's redirect
+  app.get('/auth/google/callback', async (req, res) => {
+    try {
+      const { code } = req.query;
+      
+      if (!code) {
+        return res.status(400).send('Authorization code required');
+      }
+      
+      authTokens = await gmailService.getAccessToken(code as string);
+      
+      if (!authTokens) {
+        return res.status(400).send('Failed to exchange code for tokens');
+      }
+      
+      // Re-initialize services with tokens
+      await gmailService.initialize(credentials, authTokens);
+      await calendarService.initialize(credentials, authTokens);
+      
+      // Close the popup window
+      res.send(`
+        <html>
+          <body>
+            <h2>Authentication Successful!</h2>
+            <p>You can close this window.</p>
+            <script>
+              window.close();
+            </script>
+          </body>
+        </html>
+      `);
+      
+    } catch (error) {
+      console.error('OAuth callback error:', error);
+      res.status(500).send('Authentication failed');
+    }
+  });
+
+  // Legacy callback endpoint for backward compatibility
   app.post('/api/auth-callback', async (req, res) => {
     try {
       const { code } = req.body;
@@ -185,59 +300,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: 'Not authenticated' });
       }
       
-      // For demo purposes, create sample emails
-      const rawEmails = [
-        {
-          id: 'email-1',
-          threadId: 'thread-1',
-          subject: 'Q4 Budget Review - Need Response Today',
-          sender: 'Sarah Chen <sarah.chen@company.com>',
-          senderEmail: 'sarah.chen@company.com',
-          body: 'Hi there, I need your approval on the Q4 marketing budget allocation of $50,000. This is part of our annual budget review process, already approved by finance team. Deadline: Today 5:00 PM. The allocation will cover: Digital advertising campaigns ($30K), Content creation and design ($15K), Event marketing ($5K). Please let me know if you need any additional details. Best, Sarah',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-          rawData: {}
-        },
-        {
-          id: 'email-2',
-          threadId: 'thread-2',
-          subject: 'Project Timeline Concerns',
-          sender: 'Mike Rodriguez <mike.rodriguez@company.com>',
-          senderEmail: 'mike.rodriguez@company.com',
-          body: 'Team, I wanted to express some concerns about delivery delays for our upcoming project. We need to discuss this in tomorrow\'s meeting to avoid any escalation risk. The client is expecting the deliverables by next week.',
-          timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000), // 4 hours ago
-          rawData: {}
-        },
-        {
-          id: 'email-3',
-          threadId: 'thread-3',
-          subject: 'Security Breach Alert - Immediate Action Required',
-          sender: 'Jennifer Park <jennifer.park@company.com>',
-          senderEmail: 'jennifer.park@company.com',
-          body: 'URGENT: Security incident detected. IT team needs approval for emergency protocols. Time-sensitive decision required. We have detected a potential security breach and need immediate action to secure our systems.',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
-          rawData: {}
-        },
-        {
-          id: 'email-4',
-          threadId: 'thread-4',
-          subject: 'Weekly Newsletter - Company Updates',
-          sender: 'Company Newsletter <newsletter@company.com>',
-          senderEmail: 'newsletter@company.com',
-          body: 'This week\'s company updates: New office opening, employee spotlight, and upcoming events. Read more about our latest achievements and team celebrations.',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-          rawData: {}
-        },
-        {
-          id: 'email-5',
-          threadId: 'thread-5',
-          subject: 'Meeting Schedule Request',
-          sender: 'Alex Johnson <alex.johnson@company.com>',
-          senderEmail: 'alex.johnson@company.com',
-          body: 'Hi, could we schedule a meeting next week to discuss the new project requirements? I\'m available Tuesday through Thursday. Let me know what works best for you.',
-          timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
-          rawData: {}
+      // Try to fetch real emails from Gmail, fallback to demo data if not configured
+      let rawEmails;
+      try {
+        rawEmails = await gmailService.fetchEmails(20);
+        
+        // If we get an empty result, show demo data for better UX
+        if (!rawEmails || rawEmails.length === 0) {
+          rawEmails = getDemoEmails();
         }
-      ];
+      } catch (error) {
+        console.log('Gmail fetch failed, using demo data:', error.message);
+        rawEmails = getDemoEmails();
+      }
       const processedEmails = [];
       
       for (const rawEmail of rawEmails) {
@@ -286,8 +361,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   eventId,
                   title: `Email Deadline: ${rawEmail.subject}`,
                   description: `From: ${rawEmail.sender}`,
-                  startTime: deadlineDate,
-                  endTime: new Date(deadlineDate.getTime() + 60 * 60 * 1000)
+                  startTime: deadline,
+                  endTime: new Date(deadline.getTime() + 60 * 60 * 1000)
                 });
               }
             } catch (calendarError) {

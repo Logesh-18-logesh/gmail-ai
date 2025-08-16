@@ -1,38 +1,8 @@
-// Mock Google services for demo purposes
-interface MockGoogleAuth {
-  setCredentials: (tokens: any) => void;
-  generateAuthUrl: (options: any) => string;
-  getToken: (code: string) => Promise<{ tokens: any }>;
-  refresh: (request: any) => void;
-}
-
-const mockGoogle = {
-  auth: {
-    OAuth2: class MockOAuth2Client implements MockGoogleAuth {
-      constructor(clientId: string, clientSecret: string, redirectUri: string) {}
-      setCredentials(tokens: any) {}
-      generateAuthUrl(options: any) {
-        return 'https://accounts.google.com/oauth/authorize?mock=true';
-      }
-      async getToken(code: string) {
-        return { tokens: { access_token: 'mock_token', refresh_token: 'mock_refresh' } };
-      }
-      refresh(request: any) {}
-    }
-  },
-  gmail: (options: any) => ({
-    users: {
-      messages: {
-        list: () => ({ execute: () => ({ data: { messages: [] } }) }),
-        get: () => ({ execute: () => ({ data: { payload: { headers: [] }, threadId: 'mock' } }) }),
-        send: () => ({ execute: () => ({ data: { id: 'mock_sent' } }) })
-      }
-    }
-  })
-};
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
 import { Email, InsertEmail } from '@shared/schema';
 
-type OAuth2Client = MockGoogleAuth;
+// Remove the mock type override
 
 export class GmailService {
   private oauth2Client: OAuth2Client | null = null;
@@ -42,7 +12,7 @@ export class GmailService {
     try {
       const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
       
-      this.oauth2Client = new mockGoogle.auth.OAuth2(
+      this.oauth2Client = new google.auth.OAuth2(
         client_id,
         client_secret,
         redirect_uris[0]
@@ -52,7 +22,7 @@ export class GmailService {
         this.oauth2Client.setCredentials(tokens);
       }
 
-      this.gmail = mockGoogle.gmail({ version: 'v1', auth: this.oauth2Client });
+      this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
       
       return true;
     } catch (error) {
