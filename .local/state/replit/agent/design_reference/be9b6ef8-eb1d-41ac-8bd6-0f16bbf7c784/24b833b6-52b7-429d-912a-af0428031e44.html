@@ -1,0 +1,698 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Email & Calendar Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        priority: {
+                            urgent: '#FEF3C7',
+                            high: '#FEF9C3', 
+                            medium: '#ECFDF5',
+                            low: '#D1FAE5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- @COMPONENT: MainApp [main application container] -->
+    <div class="flex h-screen bg-gray-50">
+        
+        <!-- @COMPONENT: Sidebar [navigation and categories] -->
+        <div class="w-64 bg-white border-r border-gray-200 flex flex-col">
+            <!-- Header -->
+            <div class="p-4 border-b border-gray-200">
+                <div class="flex items-center space-x-2">
+                    <i class="fas fa-robot text-blue-600 text-xl"></i>
+                    <h1 class="text-lg font-semibold text-gray-900">AI Email Manager</h1>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="p-4 bg-blue-50 border-b border-gray-200" data-mock="true">
+                <div id="uploadSection">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Upload Credentials</label>
+                    <input type="file" accept=".json" id="credentialsFile" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" data-implementation="Handle credentials.json upload and trigger OAuth flow">
+                    <p class="text-xs text-gray-500 mt-1">Upload your Google credentials.json file</p>
+                </div>
+                
+                <div id="authStatus" class="hidden mt-3">
+                    <div class="flex items-center text-green-700">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        <span class="text-sm">Connected to Gmail & Calendar</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Menu -->
+            <nav class="flex-1 p-4 space-y-1">
+                <!-- @STATE: activeSection:string = 'urgent' -->
+                <div class="space-y-1">
+                    <h3 class="text-xs font-medium text-gray-500 uppercase tracking-wider">Priority Inbox</h3>
+                    
+                    <a href="#" class="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg bg-blue-50 text-blue-700" data-section="urgent">
+                        <div class="flex items-center">
+                            <i class="fas fa-exclamation-triangle mr-3 text-amber-500"></i>
+                            <span>Urgent</span>
+                        </div>
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full" data-bind="urgentCount">3</span>
+                    </a>
+
+                    <a href="#" class="flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50" data-section="normal">
+                        <div class="flex items-center">
+                            <i class="fas fa-inbox mr-3 text-blue-500"></i>
+                            <span>Normal</span>
+                        </div>
+                        <span class="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-1 rounded-full" data-bind="normalCount">7</span>
+                    </a>
+
+                    <a href="#" class="flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50" data-section="low">
+                        <div class="flex items-center">
+                            <i class="fas fa-arrow-down mr-3 text-green-500"></i>
+                            <span>Low Priority</span>
+                        </div>
+                        <span class="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-1 rounded-full" data-bind="lowCount">2</span>
+                    </a>
+                </div>
+
+                <div class="pt-4 space-y-1">
+                    <h3 class="text-xs font-medium text-gray-500 uppercase tracking-wider">Follow-ups</h3>
+                    
+                    <a href="#" class="flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50" data-section="reply-later">
+                        <div class="flex items-center">
+                            <i class="fas fa-clock mr-3 text-orange-500"></i>
+                            <span>Reply Later</span>
+                        </div>
+                        <span class="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full" data-bind="replyLaterCount">4</span>
+                    </a>
+
+                    <a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50" data-section="calendar">
+                        <i class="fas fa-calendar-alt mr-3 text-purple-500"></i>
+                        <span>Calendar Events</span>
+                    </a>
+                </div>
+            </nav>
+
+            <!-- Settings -->
+            <div class="p-4 border-t border-gray-200">
+                <button class="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-cog mr-3"></i>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </div>
+        <!-- @END_COMPONENT: Sidebar -->
+
+        <!-- @COMPONENT: MainContent [email list and details] -->
+        <div class="flex-1 flex flex-col">
+            
+            <!-- Email List Header -->
+            <div class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900" data-bind="currentSection">Urgent (3)</h2>
+                        <p class="text-sm text-gray-500">AI-classified emails sorted by priority</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <div class="flex items-center space-x-2">
+                            <div class="flex items-center">
+                                <div class="w-3 h-3 bg-amber-300 rounded-full mr-2"></div>
+                                <span class="text-sm text-gray-600">High Priority</span>
+                            </div>
+                            <div class="flex items-center ml-4">
+                                <div class="w-3 h-3 bg-green-300 rounded-full mr-2"></div>
+                                <span class="text-sm text-gray-600">Lower Priority</span>
+                            </div>
+                        </div>
+                        <button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors" data-event="click:refreshEmails">
+                            <i class="fas fa-sync mr-2"></i>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loadingState" class="hidden flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                    <p class="text-gray-500 mt-4">Processing emails with AI...</p>
+                </div>
+            </div>
+
+            <!-- Email List Container -->
+            <div class="flex-1 flex">
+                
+                <!-- Email List -->
+                <div class="flex-1 overflow-y-auto">
+                    <!-- @MAP: sortedEmails.map(email => ( -->
+                    
+                    <!-- Urgent Email Card -->
+                    <div class="bg-gradient-to-r from-yellow-50 to-amber-50 border-l-4 border-amber-400 p-6 m-4 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer" data-mock="true" data-priority="urgent">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <img src="https://pixabay.com/get/gf40a0104d9496c7fbe315a3a6b72ab86b52c438203e0b089ff79f904c25e96bdfb0ac0bad4903e386fbb493708a96bac4d659abc8b76c5b1cdfc5d860b752993_1280.jpg" alt="Sarah Chen profile" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900" data-bind="email.sender">Sarah Chen</h3>
+                                        <p class="text-xs text-gray-500" data-bind="email.timestamp">2 hours ago</p>
+                                    </div>
+                                    <span class="bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded">VP</span>
+                                </div>
+                                
+                                <h4 class="text-base font-semibold text-gray-900 mb-2" data-bind="email.subject">Q4 Budget Review - Need Response Today</h4>
+                                
+                                <div class="flex items-center space-x-4 mb-3">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-brain text-blue-500 mr-1"></i>
+                                        <span class="text-sm text-gray-600">AI Summary:</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <i class="fas fa-clock text-red-500 mr-1"></i>
+                                        <span class="text-sm text-red-600 font-medium" data-bind="email.deadline">Today 5:00 PM</span>
+                                    </div>
+                                </div>
+                                
+                                <p class="text-sm text-gray-700 mb-3" data-bind="email.summary">Budget approval needed for Q4 marketing spend. Deadline: Today 5PM. Requires your sign-off on $50K allocation.</p>
+                                
+                                <div class="flex items-center space-x-4">
+                                    <div class="flex items-center bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm">
+                                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                                        <span class="font-medium">Urgent</span>
+                                        <span class="ml-2 bg-amber-200 text-amber-900 px-2 py-0.5 rounded text-xs" data-bind="email.confidence">92%</span>
+                                    </div>
+                                    <button class="text-blue-600 hover:text-blue-700 text-sm font-medium" data-event="click:openCorrection">
+                                        <i class="fas fa-edit mr-1"></i>
+                                        Correct Classification
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="flex flex-col space-y-2 ml-4">
+                                <button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-reply mr-2"></i>
+                                    Reply
+                                </button>
+                                <button class="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-200 transition-colors" data-event="click:addToReplyLater">
+                                    <i class="fas fa-clock mr-2"></i>
+                                    Reply Later
+                                </button>
+                                <button class="text-gray-500 hover:text-gray-700 px-4 py-2 text-sm">
+                                    <i class="fas fa-archive"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Normal Priority Email Card -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-400 p-6 m-4 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer" data-mock="true" data-priority="normal">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <!-- Professional headshot of a middle-aged man with glasses in business attire -->
+                                    <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&w=40&h=40&fit=crop&crop=face" alt="Mike Rodriguez profile" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900">Mike Rodriguez</h3>
+                                        <p class="text-xs text-gray-500">4 hours ago</p>
+                                    </div>
+                                    <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">Client</span>
+                                </div>
+                                
+                                <h4 class="text-base font-semibold text-gray-900 mb-2">Project Timeline Concerns</h4>
+                                
+                                <div class="flex items-center space-x-4 mb-3">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-brain text-blue-500 mr-1"></i>
+                                        <span class="text-sm text-gray-600">AI Summary:</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <i class="fas fa-clock text-orange-500 mr-1"></i>
+                                        <span class="text-sm text-orange-600 font-medium">Tomorrow</span>
+                                    </div>
+                                </div>
+                                
+                                <p class="text-sm text-gray-700 mb-3">Client expressing concerns about delivery delays. Meeting requested for tomorrow. Escalation risk detected.</p>
+                                
+                                <div class="flex items-center space-x-4">
+                                    <div class="flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                                        <i class="fas fa-info-circle mr-2"></i>
+                                        <span class="font-medium">Normal</span>
+                                        <span class="ml-2 bg-blue-200 text-blue-900 px-2 py-0.5 rounded text-xs">78%</span>
+                                    </div>
+                                    <button class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                                        <i class="fas fa-edit mr-1"></i>
+                                        Correct Classification
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="flex flex-col space-y-2 ml-4">
+                                <button class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-reply mr-2"></i>
+                                    Reply
+                                </button>
+                                <button class="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-200 transition-colors">
+                                    <i class="fas fa-clock mr-2"></i>
+                                    Reply Later
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Low Priority Email Card -->
+                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-400 p-6 m-4 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer" data-mock="true" data-priority="low">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <!-- Professional headshot of a woman with short hair smiling -->
+                                    <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?ixlib=rb-4.0.3&w=40&h=40&fit=crop&crop=face" alt="Jennifer Park profile" class="w-8 h-8 rounded-full">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900">Jennifer Park</h3>
+                                        <p class="text-xs text-gray-500">30 minutes ago</p>
+                                    </div>
+                                    <span class="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded">Team</span>
+                                </div>
+                                
+                                <h4 class="text-base font-semibold text-gray-900 mb-2">Security Breach Alert - Immediate Action Required</h4>
+                                
+                                <div class="flex items-center space-x-4 mb-3">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-brain text-blue-500 mr-1"></i>
+                                        <span class="text-sm text-gray-600">AI Summary:</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <i class="fas fa-shield-alt text-red-500 mr-1"></i>
+                                        <span class="text-sm text-red-600 font-medium">Security Alert</span>
+                                    </div>
+                                </div>
+                                
+                                <p class="text-sm text-gray-700 mb-3">Potential security incident detected. IT team needs approval for emergency protocols. Time-sensitive decision required.</p>
+                                
+                                <div class="flex items-center space-x-4">
+                                    <div class="flex items-center bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
+                                        <i class="fas fa-arrow-down mr-2"></i>
+                                        <span class="font-medium">Low</span>
+                                        <span class="ml-2 bg-green-200 text-green-900 px-2 py-0.5 rounded text-xs">65%</span>
+                                    </div>
+                                    <button class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                                        <i class="fas fa-edit mr-1"></i>
+                                        Correct Classification
+                                    </button>
+                                    <div class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                                        <span class="text-xs">May need reclassification</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex flex-col space-y-2 ml-4">
+                                <button class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">
+                                    <i class="fas fa-reply mr-2"></i>
+                                    Urgent Reply
+                                </button>
+                                <button class="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-200 transition-colors">
+                                    <i class="fas fa-clock mr-2"></i>
+                                    Reply Later
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- @END_MAP )) -->
+                </div>
+
+                <!-- Email Preview Panel -->
+                <div class="w-96 bg-white border-l border-gray-200 hidden lg:flex flex-col" id="previewPanel">
+                    <div class="p-6 border-b border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900" data-bind="selectedEmail.subject">Q4 Budget Review - Need Response Today</h3>
+                            <button class="text-gray-400 hover:text-gray-600">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center space-x-3 mb-4">
+                            <!-- Professional headshot of Sarah Chen for email preview -->
+                            <img src="https://pixabay.com/get/g6ac32d3ea77eb841ea1583f0c7e618548eb9d8c4b139bbd0f968164860f82e2ade2444af9aac0eb609e555c7674f1673adfc33acbbcc25014077865c74121566_1280.jpg" alt="Sarah Chen profile" class="w-12 h-12 rounded-full">
+                            <div>
+                                <p class="font-medium text-gray-900">Sarah Chen</p>
+                                <p class="text-sm text-gray-500">sarah.chen@company.com</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                            <div class="flex items-center mb-2">
+                                <i class="fas fa-robot text-blue-500 mr-2"></i>
+                                <span class="text-sm font-medium text-gray-700">AI Thread Summary</span>
+                            </div>
+                            <p class="text-sm text-gray-600">Key insights: Q4 budget approval needed ($50K). Deadline: Today 5PM. Requires your sign-off on budget allocation. Part of annual budget review process, already approved by finance team.</p>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-gray-500">Deadline:</span>
+                                <span class="text-red-600 font-medium">Today 5:00 PM</span>
+                            </div>
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-gray-500">Priority:</span>
+                                <span class="bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs font-medium">Urgent (92%)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 p-6 overflow-y-auto">
+                        <div class="prose prose-sm max-w-none" data-mock="true">
+                            <p>Hi there,</p>
+                            <p>I need your approval on the Q4 marketing budget allocation of $50,000. This is part of our annual budget review process and has already been approved by the finance team.</p>
+                            
+                            <p><strong>The allocation will cover:</strong></p>
+                            <ul>
+                                <li>Digital advertising campaigns ($30K)</li>
+                                <li>Content creation and design ($15K)</li>
+                                <li>Event marketing ($5K)</li>
+                            </ul>
+                            
+                            <p>Please let me know if you need any additional details.</p>
+                            
+                            <p>Best,<br>Sarah</p>
+                        </div>
+                    </div>
+
+                    <div class="p-6 border-t border-gray-200">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">AI Draft Response</label>
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <p class="text-sm text-gray-700">Thanks for the detailed breakdown. I approve the Q4 marketing budget allocation of $50,000 as outlined. Please proceed with the implementation across the three categories mentioned.</p>
+                            </div>
+                            <div class="flex items-center justify-between mt-2">
+                                <span class="text-xs text-gray-500">Confidence: 86%</span>
+                                <button class="text-blue-600 hover:text-blue-700 text-xs font-medium">Edit Draft</button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                                Send Reply
+                            </button>
+                            <button class="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+                                Schedule
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- @END_COMPONENT: MainContent -->
+
+        <!-- @COMPONENT: CalendarSidebar [calendar events view] -->
+        <div class="w-80 bg-white border-l border-gray-200 hidden" id="calendarPanel">
+            <div class="p-6 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">Calendar Events</h3>
+                <p class="text-sm text-gray-500">Events created from email deadlines</p>
+            </div>
+            
+            <div class="p-6">
+                <div class="space-y-4">
+                    <!-- Calendar Event -->
+                    <div class="border border-amber-200 bg-amber-50 rounded-lg p-4">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h4 class="font-medium text-gray-900">Q4 Budget Review</h4>
+                                <p class="text-sm text-gray-600 mt-1">Today, 5:00 PM</p>
+                                <p class="text-xs text-gray-500 mt-2">Created from: Sarah Chen's email</p>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button class="text-blue-600 hover:text-blue-700 p-1">
+                                    <i class="fas fa-edit text-sm"></i>
+                                </button>
+                                <button class="text-red-600 hover:text-red-700 p-1" data-event="click:deleteEvent">
+                                    <i class="fas fa-trash text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Another Calendar Event -->
+                    <div class="border border-blue-200 bg-blue-50 rounded-lg p-4">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h4 class="font-medium text-gray-900">Project Timeline Meeting</h4>
+                                <p class="text-sm text-gray-600 mt-1">Tomorrow, 10:00 AM</p>
+                                <p class="text-xs text-gray-500 mt-2">Created from: Mike Rodriguez's email</p>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button class="text-blue-600 hover:text-blue-700 p-1">
+                                    <i class="fas fa-edit text-sm"></i>
+                                </button>
+                                <button class="text-red-600 hover:text-red-700 p-1">
+                                    <i class="fas fa-trash text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- @END_COMPONENT: CalendarSidebar -->
+    </div>
+
+    <!-- @COMPONENT: ClassificationModal [AI correction interface] -->
+    <div id="classificationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full m-4">
+            <div class="p-6 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900">Correct AI Classification</h3>
+                <p class="text-sm text-gray-500 mt-1">Help improve the AI model by correcting this email's priority</p>
+            </div>
+            
+            <div class="p-6">
+                <div class="mb-4">
+                    <p class="text-sm text-gray-700 mb-2">Current Classification:</p>
+                    <div class="bg-amber-100 text-amber-800 px-3 py-2 rounded-lg text-sm font-medium">
+                        Urgent (92% confidence)
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-3">Select Correct Priority:</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="radio" name="priority" value="urgent" class="mr-3 text-red-600">
+                            <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">Urgent</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="priority" value="normal" class="mr-3 text-blue-600" checked>
+                            <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">Normal</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="priority" value="low" class="mr-3 text-green-600">
+                            <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">Low</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reason for Correction (Optional):</label>
+                    <textarea class="w-full p-3 border border-gray-300 rounded-lg text-sm" rows="3" placeholder="Help us understand why this classification was incorrect..."></textarea>
+                </div>
+            </div>
+            
+            <div class="p-6 border-t border-gray-200 flex space-x-3">
+                <button class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors" data-event="click:submitCorrection">
+                    Update & Train Model
+                </button>
+                <button class="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors" data-event="click:closeModal">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: ClassificationModal -->
+
+    <!-- @COMPONENT: ToastNotifications [user feedback] -->
+    <div id="notifications" class="fixed top-4 right-4 z-50 space-y-2">
+        <!-- Success Toast -->
+        <div class="hidden bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg" id="successToast">
+            <div class="flex items-center">
+                <i class="fas fa-check-circle mr-2"></i>
+                <span class="text-sm font-medium">Model updated successfully!</span>
+            </div>
+        </div>
+        
+        <!-- Error Toast -->
+        <div class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg" id="errorToast">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-circle mr-2"></i>
+                <span class="text-sm font-medium" data-bind="errorMessage">Authentication failed</span>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: ToastNotifications -->
+
+    <script>
+    (function() {
+        // TODO: Implement Gmail API integration, OAuth flow, and AI model integration
+        // TODO: Implement email classification pipeline with adaptive classifier
+        // TODO: Implement calendar event creation and management
+        // TODO: Implement user feedback system for model retraining
+        
+        // Mock data and interactions for demonstration
+        let currentSection = 'urgent';
+        let replyLaterEmails = [];
+        
+        // Navigation handling
+        document.querySelectorAll('[data-section]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Update active states
+                document.querySelectorAll('[data-section]').forEach(el => {
+                    el.classList.remove('bg-blue-50', 'text-blue-700');
+                    el.classList.add('text-gray-700', 'hover:bg-gray-50');
+                });
+                
+                link.classList.add('bg-blue-50', 'text-blue-700');
+                link.classList.remove('text-gray-700', 'hover:bg-gray-50');
+                
+                currentSection = link.dataset.section;
+                
+                // Show/hide panels based on section
+                if (currentSection === 'calendar') {
+                    document.getElementById('calendarPanel').classList.remove('hidden');
+                    document.getElementById('previewPanel').classList.add('hidden');
+                } else {
+                    document.getElementById('calendarPanel').classList.add('hidden');
+                    document.getElementById('previewPanel').classList.remove('hidden');
+                }
+                
+                // Update section header
+                const sectionTitles = {
+                    'urgent': 'Urgent (3)',
+                    'normal': 'Normal (7)', 
+                    'low': 'Low Priority (2)',
+                    'reply-later': 'Reply Later (4)',
+                    'calendar': 'Calendar Events'
+                };
+                
+                document.querySelector('[data-bind="currentSection"]').textContent = sectionTitles[currentSection];
+            });
+        });
+        
+        // File upload handling
+        document.getElementById('credentialsFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.name.endsWith('.json')) {
+                // TODO: Process credentials.json and initiate OAuth flow
+                
+                // Simulate successful authentication
+                setTimeout(() => {
+                    document.getElementById('uploadSection').classList.add('hidden');
+                    document.getElementById('authStatus').classList.remove('hidden');
+                    showToast('success', 'Connected to Gmail & Calendar successfully!');
+                    
+                    // Start email processing simulation
+                    document.getElementById('loadingState').classList.remove('hidden');
+                    setTimeout(() => {
+                        document.getElementById('loadingState').classList.add('hidden');
+                        showToast('success', 'Processed 20 emails with AI classification');
+                    }, 3000);
+                }, 1500);
+            } else {
+                showToast('error', 'Please select a valid credentials.json file');
+            }
+        });
+        
+        // Classification correction modal
+        document.querySelectorAll('[data-event="click:openCorrection"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('classificationModal').classList.remove('hidden');
+            });
+        });
+        
+        document.querySelector('[data-event="click:closeModal"]').addEventListener('click', () => {
+            document.getElementById('classificationModal').classList.add('hidden');
+        });
+        
+        document.querySelector('[data-event="click:submitCorrection"]').addEventListener('click', () => {
+            const selectedPriority = document.querySelector('input[name="priority"]:checked').value;
+            // TODO: Update classifier model with correction using classifier.add_examples()
+            
+            document.getElementById('classificationModal').classList.add('hidden');
+            showToast('success', `Classification updated to "${selectedPriority}". Model will learn from this correction.`);
+        });
+        
+        // Reply Later functionality
+        document.querySelectorAll('[data-event="click:addToReplyLater"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                replyLaterEmails.push(Date.now()); // Mock email ID
+                updateReplyLaterCount();
+                showToast('success', 'Email added to Reply Later list');
+            });
+        });
+        
+        // Calendar event deletion
+        document.querySelectorAll('[data-event="click:deleteEvent"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // TODO: Delete calendar event via Google Calendar API
+                btn.closest('.border').remove();
+                showToast('success', 'Calendar event deleted');
+            });
+        });
+        
+        // Refresh emails
+        document.querySelector('[data-event="click:refreshEmails"]').addEventListener('click', () => {
+            document.getElementById('loadingState').classList.remove('hidden');
+            // TODO: Fetch and process new emails
+            setTimeout(() => {
+                document.getElementById('loadingState').classList.add('hidden');
+                showToast('success', 'Emails refreshed and re-classified');
+            }, 2000);
+        });
+        
+        // Utility functions
+        function updateReplyLaterCount() {
+            document.querySelector('[data-bind="replyLaterCount"]').textContent = replyLaterEmails.length;
+        }
+        
+        function showToast(type, message) {
+            const toast = document.getElementById(type === 'success' ? 'successToast' : 'errorToast');
+            if (type === 'error') {
+                toast.querySelector('[data-bind="errorMessage"]').textContent = message;
+            } else {
+                toast.querySelector('span').textContent = message;
+            }
+            
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 4000);
+        }
+        
+        // Email card interactions
+        document.querySelectorAll('[data-priority]').forEach(card => {
+            card.addEventListener('click', () => {
+                // Show email preview
+                document.getElementById('previewPanel').classList.remove('hidden');
+                // TODO: Load email content in preview panel
+            });
+        });
+        
+    })();
+    </script>
+
+</body>
+</html>
