@@ -16,6 +16,7 @@ externalPort = 80
 
 [env]
 PORT = "5000"
+DATABASE_URL = "postgresql://localhost:5432/email_assistant"
 
 [workflows]
 runButton = "Project"
