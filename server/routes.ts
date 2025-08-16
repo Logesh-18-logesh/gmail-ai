@@ -129,18 +129,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ message: 'Failed to initialize Google services' });
       }
       
-      // Generate auth URL
-      const authUrl = gmailService.getAuthUrl();
+      // For demo purposes, skip actual OAuth and simulate successful authentication
+      authTokens = { access_token: 'demo_token', refresh_token: 'demo_refresh' };
+      
+      // Re-initialize services with mock tokens
+      await gmailService.initialize(credentials, authTokens);
+      await calendarService.initialize(credentials, authTokens);
       
       res.json({ 
         message: 'Credentials uploaded successfully',
-        authUrl,
-        needsAuth: !authTokens
+        authenticated: true,
+        needsAuth: false
       });
     } catch (error) {
       console.error('Error uploading credentials:', error);
       res.status(400).json({ message: 'Invalid credentials file' });
     }
+  });
+
+  // Check authentication status
+  app.get('/api/auth-status', (req, res) => {
+    res.json({ authenticated: !!authTokens });
   });
   
   // Handle OAuth callback

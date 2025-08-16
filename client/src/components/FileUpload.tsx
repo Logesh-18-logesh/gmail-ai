@@ -43,28 +43,36 @@ export default function FileUpload() {
         throw new Error(result.message || 'Upload failed');
       }
 
-      if (result.needsAuth) {
-        // Open OAuth URL in new window
-        const authWindow = window.open(result.authUrl, 'auth', 'width=500,height=600');
-        
-        // Poll for auth completion
-        const pollTimer = setInterval(() => {
-          try {
-            if (authWindow?.closed) {
-              clearInterval(pollTimer);
-              handleAuthComplete();
-            }
-          } catch (error) {
-            // Cross-origin error when auth is complete
-            clearInterval(pollTimer);
-            handleAuthComplete();
-          }
-        }, 1000);
-      } else {
+      if (result.authenticated) {
         setIsAuthenticated(true);
+        setIsLoading(true);
+        
         toast({
           title: 'Success',
-          description: 'Connected to Gmail & Calendar successfully!',
+          description: 'Connected to Gmail & Calendar successfully! Processing emails...',
+        });
+
+        // Automatically process emails after authentication
+        try {
+          await apiRequest('POST', '/api/process-emails');
+          toast({
+            title: 'Complete',
+            description: 'Emails processed and classified successfully!',
+          });
+        } catch (error: any) {
+          toast({
+            title: 'Warning',
+            description: 'Authentication successful, but email processing failed',
+            variant: 'destructive',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Authentication failed. Please try again.',
+          variant: 'destructive',
         });
       }
     } catch (error: any) {

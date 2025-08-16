@@ -13,7 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 function DashboardContent() {
   const [classificationModalOpen, setClassificationModalOpen] = useState(false);
   const [selectedEmailForCorrection, setSelectedEmailForCorrection] = useState<Email | null>(null);
-  const { currentSection, setEmails, isAuthenticated } = useEmail();
+  const { currentSection, setEmails, isAuthenticated, setIsAuthenticated } = useEmail();
   const queryClient = useQueryClient();
 
   // Fetch all emails and update context
@@ -22,6 +22,23 @@ function DashboardContent() {
     enabled: isAuthenticated,
     refetchInterval: 30000, // Refetch every 30 seconds
   });
+
+  // Check authentication status on load
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth-status');
+        if (response.ok) {
+          const result = await response.json();
+          setIsAuthenticated(result.authenticated);
+        }
+      } catch (error) {
+        console.log('Auth check failed:', error);
+      }
+    };
+    
+    checkAuth();
+  }, [setIsAuthenticated]);
 
   // Update context when emails are fetched
   useEffect(() => {
