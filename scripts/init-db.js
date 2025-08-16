@@ -1,12 +1,13 @@
 
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Client } from 'pg';
+import pkg from 'pg';
+const { Client } = pkg;
 
 async function initDatabase() {
   try {
     // Check if we can connect to the database
     const client = new Client({
-      connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/email_assistant'
+      connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/email_assistant'
     });
     
     await client.connect();
