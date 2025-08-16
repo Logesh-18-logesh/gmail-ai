@@ -1,0 +1,179 @@
+from __future__ import print_function
+import base64
+import os.path
+import pickle
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from adaptive_classifier import AdaptiveClassifier
+from transformers import pipeline
+from dateutil import parser
+
+# -------------------- Config --------------------
+GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+MAX_CLASSIFIER_CHARS = 4000  # approx safe for 1024 tokens
+MAX_SUMMARY_CHARS = 3000     # safe input for summarization
+
+priority_order = {"urgent": 3, "normal": 2, "low": 1}
+
+# -------------------- Summarization --------------------
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6",device=-1)
+
+def summarize_email(email_text, max_len=50, min_len=20):
+    try:
+        summary = summarizer(email_text, max_length=max_len, min_length=min_len, do_sample=False)
+        return summary[0]['summary_text']
+    except:
+        return "(Summary could not be generated)"
+
+# -------------------- Gmail Service --------------------
+def get_gmail_service():
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', GMAIL_SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', GMAIL_SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    return build('gmail', 'v1', credentials=creds)
+
+def get_last_20_emails():
+    service = get_gmail_service()
+    results = service.users().messages().list(userId='me', maxResults=20).execute()
+    messages = results.get('messages', [])
+    
+    email_texts = []
+    for msg in messages:
+        msg_data = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+        payload = msg_data['payload']
+        headers = msg_data['payload'].get("headers", [])
+        
+        # Extract subject
+        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), "No Subject")
+
+        parts = payload.get('parts', [])
+        body = ""
+        
+        if parts:
+            for part in parts:
+                if part['mimeType'] == 'text/plain':
+                    body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8', errors="ignore")
+                    break
+        else:
+            if 'body' in payload and 'data' in payload['body']:
+                body = base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8', errors="ignore")
+        
+        email_texts.append({"subject": subject, "body": body})
+    
+    return email_texts
+
+# -------------------- Classifier --------------------
+classifier = AdaptiveClassifier.from_pretrained("adaptive-classifier/email-priority")
+
+# -------------------- Deadline Extractor --------------------
+qa_pipeline = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
+
+def extract_deadline_from_email(email_text: str):
+    question = "What is the deadline, date, or event time mentioned in the email?"
+    try:
+        result = qa_pipeline(question=question, context=email_text)
+        return result.get("answer", "").strip()
+    except:
+        return None
+
+# -------------------- Google Calendar --------------------
+def get_calendar_service():
+    creds = None
+    if os.path.exists("token_calendar.pickle"):
+        with open("token_calendar.pickle", "rb") as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", CALENDAR_SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("token_calendar.pickle", "wb") as token:
+            pickle.dump(creds, token)
+    return build("calendar", "v3", credentials=creds)
+
+def add_event_to_calendar(subject, date_time):
+    service = get_calendar_service()
+    event = {
+        'summary': subject,
+        'start': {'dateTime': date_time, 'timeZone': 'Asia/Kolkata'},
+        'end': {'dateTime': date_time, 'timeZone': 'Asia/Kolkata'},
+    }
+    event = service.events().insert(calendarId='primary', body=event).execute()
+    print(f"✅ Event created: {event.get('htmlLink')}")
+
+# -------------------- Process Emails --------------------
+emails = get_last_20_emails()
+results = []
+
+for i, email in enumerate(emails, start=1):
+    email_text = email["body"]
+    subject = email["subject"]
+
+    if email_text.strip():
+        # -------------------- Truncate for classifier --------------------
+        truncated_text = email_text[:MAX_CLASSIFIER_CHARS]
+        predictions = classifier.predict(truncated_text)
+        top_label, top_score = max(predictions, key=lambda x: x[1])
+
+        # -------------------- Extract deadline --------------------
+        deadline = extract_deadline_from_email(email_text)
+        parsed_deadline = None
+        if deadline and deadline != "Not Found":
+            try:
+                parsed_deadline = parser.parse(deadline, fuzzy=True).isoformat()
+            except:
+                parsed_deadline = None
+
+        # -------------------- Summarize --------------------
+        summary_text = summarize_email(email_text[:MAX_SUMMARY_CHARS])
+
+        results.append({
+            "id": i,
+            "subject": subject,
+            "text": email_text,
+            "summary": summary_text,
+            "label": top_label,
+            "score": top_score,
+            "all_predictions": predictions,
+            "deadline": parsed_deadline if parsed_deadline else "Not Found"
+        })
+
+        if parsed_deadline:
+            add_event_to_calendar(subject, parsed_deadline)
+
+    else:
+        results.append({
+            "id": i,
+            "subject": subject,
+            "text": "(No text found)",
+            "summary": "(No text to summarize)",
+            "label": "none",
+            "score": 0,
+            "all_predictions": [],
+            "deadline": "Not Found"
+        })
+
+# -------------------- Display --------------------
+print("\n===== 📌 Sorted Emails by Priority =====\n")
+results_sorted = sorted(results, key=lambda x: (priority_order.get(x["label"], 0), x["score"]), reverse=True)
+
+for r in results_sorted:
+    print(f"📩 Email {r['id']} | Subject: {r['subject']} | Label: {r['label']} | Score: {r['score']:.3f}")
+    print("⏰ Deadline:", r['deadline'])
+    print("📝 Summary:", r['summary'])
+    print(r['text'][:300], "...\n")
+    print("All Predictions:", r['all_predictions'])
+    print("-" * 60)
